@@ -1054,51 +1054,59 @@ API.v1.addRoute(
 	},
 );
 
-API.v1.addRoute(
-	'channels.members',
-	{ authRequired: true },
-	{
-		async get() {
-			const findResult = await findChannelByIdOrName({
-				params: this.queryParams,
-				checkedArchived: false,
-			});
+API.v1.addRoute( 
+    'channels.members',
+    { authRequired: true },
+    {
+        async get() {
+            const findResult = await findChannelByIdOrName({
+                params: this.queryParams,
+                checkedArchived: false,
+            });
 
-			if (findResult.broadcast && !(await hasPermissionAsync(this.userId, 'view-broadcast-member-list', findResult._id))) {
-				return API.v1.unauthorized();
-			}
+            if (findResult.broadcast && !(await hasPermissionAsync(this.userId, 'view-broadcast-member-list', findResult._id))) {
+                return API.v1.unauthorized();
+            }
 
-			const { offset: skip, count: limit } = await getPaginationItems(this.queryParams);
-			const { sort = {} } = await this.parseJsonQuery();
+            const { offset: skip, count: limit } = await getPaginationItems(this.queryParams);
 
-			check(
-				this.queryParams,
-				Match.ObjectIncluding({
-					status: Match.Maybe([String]),
-					filter: Match.Maybe(String),
-				}),
-			);
-			const { status, filter } = this.queryParams;
+            check(
+                this.queryParams,
+                Match.ObjectIncluding({
+                    status: Match.Maybe([String]),
+                    filter: Match.Maybe(String),
+                }),
+            );
+            const { status, filter } = this.queryParams;
 
-			const { cursor, totalCount } = await findUsersOfRoom({
-				rid: findResult._id,
-				...(status && { status: { $in: status } }),
-				skip,
-				limit,
-				filter,
-				...(sort?.username && { sort: { username: sort.username } }),
-			});
+            const { cursor, totalCount } = await findUsersOfRoom({
+                rid: findResult._id,
+                ...(status && { status: { $in: status } }),
+                skip,
+                limit,
+                filter,
+            });
 
-			const [members, total] = await Promise.all([cursor.toArray(), totalCount]);
+            let [members, total] = await Promise.all([cursor.toArray(), totalCount]);
 
-			return API.v1.success({
-				members,
-				count: members.length,
-				offset: skip,
-				total,
-			});
-		},
-	},
+            // Alternate method to using built in sorting (which is what Rocket.chat originally used)
+            members = members.sort((a, b) => {
+                const usernameA = a.username ? a.username.toLowerCase() : '';
+                const usernameB = b.username ? b.username.toLowerCase() : '';
+
+                if (usernameA < usernameB) return -1;
+                if (usernameA > usernameB) return 1;
+                return 0;
+            });
+
+            return API.v1.success({
+                members,
+                count: members.length,
+                offset: skip,
+                total,
+            });
+        },
+    },
 );
 
 API.v1.addRoute(
