@@ -1058,27 +1058,31 @@ API.v1.addRoute(
     'channels.members',
     { authRequired: true },
     {
-        async get() {
+        async get() { // Asynchronous fucntion to handle GET request
             const findResult = await findChannelByIdOrName({
                 params: this.queryParams,
                 checkedArchived: false,
             });
 
+			// Verify that the user has permission to view the member list
             if (findResult.broadcast && !(await hasPermissionAsync(this.userId, 'view-broadcast-member-list', findResult._id))) {
                 return API.v1.unauthorized();
             }
 
+			// Get offset and limit 
             const { offset: skip, count: limit } = await getPaginationItems(this.queryParams);
 
             check(
                 this.queryParams,
                 Match.ObjectIncluding({
+					// Handles status and filter when searching
                     status: Match.Maybe([String]),
                     filter: Match.Maybe(String),
                 }),
             );
             const { status, filter } = this.queryParams;
 
+			// Find users of the room
             const { cursor, totalCount } = await findUsersOfRoom({
                 rid: findResult._id,
                 ...(status && { status: { $in: status } }),
@@ -1087,18 +1091,21 @@ API.v1.addRoute(
                 filter,
             });
 
+			// Get all memebers and total count
             let [members, total] = await Promise.all([cursor.toArray(), totalCount]);
 
             // Alternate method to using built in sorting (which is what Rocket.chat originally used)
             members = members.sort((a, b) => {
                 const usernameA = a.username ? a.username.toLowerCase() : '';
                 const usernameB = b.username ? b.username.toLowerCase() : '';
-
+				
+				// Return -1, 1, or 0 based on alphabetical comparison of usernames
                 if (usernameA < usernameB) return -1;
                 if (usernameA > usernameB) return 1;
                 return 0;
             });
 
+			// Return a successful response
             return API.v1.success({
                 members,
                 count: members.length,
